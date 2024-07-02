@@ -138,9 +138,6 @@ def generate_aws_v4_signature(request):
         aws_credentials = get_aws_credentials()
         access_key = aws_credentials.access_key
         secret_key = aws_credentials.secret_key
-    else:
-        for key in ["aws_access_key_id", "aws_secret_access_key"]:
-            del request.session[key]
 
     if not secret_key or not access_key:
         resp = json.dumps({"error": "AWS credentials config missing."})
