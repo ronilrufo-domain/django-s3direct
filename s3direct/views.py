@@ -1,17 +1,20 @@
 import json
 from datetime import datetime
+
 from django.conf import settings
 from django.http import (HttpResponse, HttpResponseBadRequest,
                          HttpResponseForbidden, HttpResponseNotFound,
                          HttpResponseServerError)
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_POST
+
 try:
     from urllib.parse import unquote
 except ImportError:
     from urlparse import unquote
+
 from .utils import (get_aws_credentials, get_aws_v4_signature,
-                    get_aws_v4_signing_key, get_s3direct_destinations, get_key)
+                    get_aws_v4_signing_key, get_key, get_s3direct_destinations)
 
 
 @csrf_protect
@@ -67,6 +70,9 @@ def get_upload_params(request):
         return HttpResponseServerError(resp, content_type='application/json')
 
     aws_credentials = get_aws_credentials()
+    request.session["aws_access_key_id"] = aws_credentials.access_key
+    request.session["aws_secret_access_key"] = aws_credentials.secret_key
+
     if not aws_credentials.secret_key or not aws_credentials.access_key:
         resp = json.dumps({'error': 'AWS credentials config missing.'})
         return HttpResponseServerError(resp, content_type='application/json')
@@ -125,13 +131,19 @@ def generate_aws_v4_signature(request):
         resp = json.dumps({'error': 'S3 region config missing.'})
         return HttpResponseServerError(resp, content_type='application/json')
 
-    aws_credentials = get_aws_credentials()
-    if not aws_credentials.secret_key or not aws_credentials.access_key:
-        resp = json.dumps({'error': 'AWS credentials config missing.'})
-        return HttpResponseServerError(resp, content_type='application/json')
+    try:
+        access_key = request.session["aws_access_key_id"]
+        secret_key = request.session["aws_secret_access_key"]
+    except KeyError:
+        aws_credentials = get_aws_credentials()
+        access_key = aws_credentials.access_key
+        secret_key = aws_credentials.secret_key
 
-    signing_key = get_aws_v4_signing_key(aws_credentials.secret_key,
-                                         signing_date, region, 's3')
+    if not secret_key or not access_key:
+        resp = json.dumps({"error": "AWS credentials config missing."})
+        return HttpResponseServerError(resp, content_type="application/json")
+
+    signing_key = get_aws_v4_signing_key(secret_key, signing_date, region, "s3")
 
     signature = get_aws_v4_signature(signing_key, message)
     resp = json.dumps({'s3ObjKey': signature})
